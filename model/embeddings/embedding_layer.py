@@ -78,7 +78,8 @@ class EmbeddingLayer(nn.Module):
     def forward(
         self,
         input_ids: torch.Tensor,
-        offset: int = 0
+        offset: int = 0,
+        position_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Embed token sequences and combine with positional encodings.
@@ -98,7 +99,9 @@ class EmbeddingLayer(nn.Module):
         if self.use_rotary:
             embeddings = tok_emb
         else:
-            pos_emb = self.position_embedding(seq_len=seq_len, offset=offset, device=input_ids.device)
+            pos_emb = self.position_embedding(
+                seq_len=seq_len, offset=offset, device=input_ids.device, position_ids=position_ids
+            )
             embeddings = tok_emb + pos_emb
 
         return self.dropout(embeddings)

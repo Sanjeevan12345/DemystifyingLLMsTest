@@ -52,7 +52,21 @@ class RotaryEmbedding(nn.Module):
         self.register_buffer("cos_cached", emb.cos(), persistent=False)
         self.register_buffer("sin_cached", emb.sin(), persistent=False)
 
-    def forward(self, x: torch.Tensor, seq_len: int, offset: int = 0) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        x: torch.Tensor,
+        seq_len: int,
+        offset: int = 0,
+        position_ids: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if position_ids is not None:
+            if position_ids.shape[-1] != seq_len:
+                raise ValueError("position_ids length must match seq_len")
+            if position_ids.numel() and (position_ids.min() < 0 or position_ids.max() >= self.max_seq_len):
+                raise ValueError("position_ids exceed rotary cache bounds")
+            cos = self.cos_cached[position_ids].to(dtype=x.dtype, device=x.device)
+            sin = self.sin_cached[position_ids].to(dtype=x.dtype, device=x.device)
+            return cos.unsqueeze(1), sin.unsqueeze(1)
         if offset < 0 or offset + seq_len > self.max_seq_len:
             raise ValueError("Requested rotary positions exceed max_seq_len")
         cos = self.cos_cached[offset:offset + seq_len, :].to(dtype=x.dtype, device=x.device)

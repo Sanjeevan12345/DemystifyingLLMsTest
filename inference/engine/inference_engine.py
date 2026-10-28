@@ -39,7 +39,11 @@ class FullTransformerModel(nn.Module):
     ) -> torch.Tensor:
         cache = kv_cache
         offset = cache.get_seq_length(0) if cache is not None else 0
-        h = self.embeddings(input_ids, offset=offset)
+        position_ids = None
+        if attention_mask is not None:
+            position_ids = attention_mask.long().cumsum(dim=-1) - 1
+            position_ids = position_ids.clamp_min(0)[:, -input_ids.size(1):]
+        h = self.embeddings(input_ids, offset=offset, position_ids=position_ids)
         h = self.blocks(h, mask=attention_mask, kv_cache=cache)
         logits = self.lm_head(h)
         return logits

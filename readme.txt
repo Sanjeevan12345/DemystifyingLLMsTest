@@ -143,3 +143,9 @@ while targeting the remaining sampling, decoding, and integration edge cases:
 88. Completion generation did not forward optional top-k/top-p unless specified, and routes
    accepted malformed JSON object shapes inconsistently. These paths now validate/forward.
 89. InferenceConfig.early_stopping was ignored. Greedy and beam generation now honor it.
+90. Top-k threshold masking retained more than k tokens when logits tied. It now scatters
+   exactly the selected k values.
+91. Left-padded batches assigned positions based on padded width for real tokens. Absolute
+   and rotary embeddings now derive positions from the attention mask.
+92. Fully masked padded query rows produced NaNs in softmax, which then leaked through
+   subsequent layers. Attention now maps undefined all-masked rows to zero weights.

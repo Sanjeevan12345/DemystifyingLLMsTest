@@ -110,7 +110,10 @@ class MultiHeadAttention(nn.Module):
         # 3. Apply rotary positions before caching keys.
         cache_offset = kv_cache.get_seq_length(layer_idx) if kv_cache is not None and layer_idx is not None else 0
         if self.rotary is not None:
-            cos, sin = self.rotary(q, seq_len, offset=cache_offset)
+            rotary_positions = None
+            if mask is not None and mask.dim() == 2:
+                rotary_positions = (mask.long().cumsum(dim=-1) - 1).clamp_min(0)[:, -seq_len:]
+            cos, sin = self.rotary(q, seq_len, offset=cache_offset, position_ids=rotary_positions)
             q, k = apply_rotary_pos_emb(q, k, cos, sin)
 
         # 4. Update KV cache if provided

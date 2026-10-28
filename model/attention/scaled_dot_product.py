@@ -45,6 +45,9 @@ def scaled_dot_product_attention(
 
     # attn_weights = F.softmax(scores, dim=-1)
     attn_weights = F.softmax(scores, dim=-1)
+    # Padding can leave a query with no visible keys. Softmax over an all-
+    # negative-infinity row is undefined; make those rows contribute zero.
+    attn_weights = torch.nan_to_num(attn_weights, nan=0.0)
 
     if dropout is not None:
         attn_weights = dropout(attn_weights)
