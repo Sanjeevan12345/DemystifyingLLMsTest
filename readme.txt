@@ -132,3 +132,14 @@ while targeting the remaining sampling, decoding, and integration edge cases:
    log-probability scores.
 83. Rotary mode added sinusoidal absolute embeddings as well as rotary positions. The
    embedding layer now omits absolute positions when use_rotary is enabled.
+84. Batched autoregressive generation never stopped rows that emitted EOS. It now tracks
+   completion per row and pads finished rows with EOS until the batch is complete.
+85. MultiHeadAttention treated a supplied padding mask as a replacement for causal
+   masking. It now combines key-padding and causal masks, including cached query offsets.
+86. FullTransformerModel did not accept or propagate attention masks. It now forwards them
+   through the block stack into attention.
+87. RequestHandler assumed continuation-only and prompt-prefixed engine outputs could not
+   both be valid; completion accounting was branch-dependent. It now handles both forms.
+88. Completion generation did not forward optional top-k/top-p unless specified, and routes
+   accepted malformed JSON object shapes inconsistently. These paths now validate/forward.
+89. InferenceConfig.early_stopping was ignored. Greedy and beam generation now honor it.

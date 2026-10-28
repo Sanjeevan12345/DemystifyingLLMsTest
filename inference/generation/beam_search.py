@@ -4,12 +4,14 @@ from typing import List, Tuple, Optional
 
 
 class BeamSearch:
-    def __init__(self, beam_width: int = 4, max_length: int = 50, eos_token_id: Optional[int] = None):
+    def __init__(self, beam_width: int = 4, max_length: int = 50, eos_token_id: Optional[int] = None,
+                 early_stopping: bool = True):
         if beam_width <= 0 or max_length < 0:
             raise ValueError("beam_width must be positive and max_length non-negative")
         self.beam_width = beam_width
         self.max_length = max_length
         self.eos_token_id = eos_token_id
+        self.early_stopping = early_stopping
 
     @torch.no_grad()
     def search(self, model: torch.nn.Module, input_ids: torch.Tensor) -> torch.Tensor:
@@ -50,7 +52,7 @@ class BeamSearch:
             new_candidates.sort(key=lambda x: x[1], reverse=True)
             beams = new_candidates[:self.beam_width]
 
-            if len(completed) >= self.beam_width:
+            if self.early_stopping and len(completed) >= self.beam_width:
                 break
 
         all_candidates = completed + beams

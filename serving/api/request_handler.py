@@ -48,6 +48,8 @@ class RequestHandler:
             prompt_tokens = [ord(c) for c in prompt]
 
         # Generate continuation
+        completion_tokens = []
+        generate_only = False
         if self.engine is not None and hasattr(self.engine, "generate_tokens"):
             generation_args = {
                 "prompt_tokens": prompt_tokens,
@@ -59,6 +61,7 @@ class RequestHandler:
                     generation_args[name] = request_body[name]
             generated_tokens = self.engine.generate_tokens(**generation_args)
         elif self.engine is not None and hasattr(self.engine, "generate"):
+            generate_only = True
             raw_gen = self.engine.generate(prompt, tokenizer=self.tokenizer, max_new_tokens=max_tokens)
             if isinstance(raw_gen, str) and raw_gen.startswith(prompt):
                 raw_gen = raw_gen[len(prompt):]
@@ -67,7 +70,7 @@ class RequestHandler:
         else:
             raise RuntimeError("No inference engine is available to handle completion")
 
-        if not (self.engine is not None and hasattr(self.engine, "generate") and not hasattr(self.engine, "generate_tokens")):
+        if not generate_only:
             has_prompt_prefix = (
                 len(generated_tokens) >= len(prompt_tokens)
                 and list(generated_tokens[:len(prompt_tokens)]) == list(prompt_tokens)
@@ -77,8 +80,8 @@ class RequestHandler:
                 response_text = self.tokenizer.decode(completion_tokens)
             else:
                 response_text = "".join(chr(token) for token in completion_tokens if 0 <= token <= 0x10FFFF)
-        completion_count = len(completion_tokens) if "completion_tokens" in locals() else 0
-        if self.engine is not None and hasattr(self.engine, "generate") and not hasattr(self.engine, "generate_tokens"):
+        completion_count = len(completion_tokens)
+        if generate_only:
             if self.tokenizer is not None and hasattr(self.tokenizer, "encode"):
                 try:
                     completion_count = len(self.tokenizer.encode(response_text, add_bos=False))

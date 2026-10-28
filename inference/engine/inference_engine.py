@@ -31,11 +31,16 @@ class FullTransformerModel(nn.Module):
         if config.tie_weights:
             self.lm_head.tie_weights(self.embeddings.token_embedding.embedding.weight)
 
-    def forward(self, input_ids: torch.Tensor, kv_cache: Optional[Any] = None) -> torch.Tensor:
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        kv_cache: Optional[Any] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         cache = kv_cache
         offset = cache.get_seq_length(0) if cache is not None else 0
         h = self.embeddings(input_ids, offset=offset)
-        h = self.blocks(h, kv_cache=cache)
+        h = self.blocks(h, mask=attention_mask, kv_cache=cache)
         logits = self.lm_head(h)
         return logits
 
@@ -115,6 +120,7 @@ class InferenceEngine:
                 beam_width=self.inference_config.beam_width,
                 max_length=max_tokens,
                 eos_token_id=self.inference_config.stop_token_ids[0] if self.inference_config.stop_token_ids else None,
+                early_stopping=self.inference_config.early_stopping,
             )
             with torch.no_grad():
                 result = beam_search.search(self.model, input_tensor)
@@ -158,7 +164,7 @@ class InferenceEngine:
 
                 tokens.append(int(next_token))
 
-                if next_token in self.inference_config.stop_token_ids:
+                if self.inference_config.early_stopping and next_token in self.inference_config.stop_token_ids:
                     break
 
         return tokens

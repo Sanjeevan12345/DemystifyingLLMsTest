@@ -117,9 +117,25 @@ class MultiHeadAttention(nn.Module):
         if kv_cache is not None and layer_idx is not None:
             k, v = kv_cache.update(layer_idx, k, v)
 
-        # 4. Prepare causal mask if needed
-        if mask is None and use_causal_mask and seq_len > 1:
-            mask = create_causal_mask(seq_len=seq_len, device=x.device, dtype=x.dtype)
+        # Combine causal and key-padding masks rather than letting a padding mask
+        # disable causal attention.
+        total_key_len = k.size(-2)
+        if mask is not None and mask.dim() == 2:
+            if mask.size(0) != batch_size or mask.size(1) != total_key_len:
+                raise ValueError("2D attention mask must have shape (batch_size, key_length)")
+            key_mask = torch.zeros_like(mask[:, None, None, :], dtype=x.dtype)
+            key_mask = key_mask.masked_fill(~mask[:, None, None, :].to(torch.bool), float("-inf"))
+            mask = key_mask
+        elif mask is not None and mask.dim() == 3:
+            mask = mask.unsqueeze(1)
+
+        if use_causal_mask:
+            query_positions = torch.arange(seq_len, device=x.device) + cache_offset
+            key_positions = torch.arange(total_key_len, device=x.device)
+            causal = torch.zeros((seq_len, total_key_len), device=x.device, dtype=x.dtype)
+            causal = causal.masked_fill(key_positions[None, :] > query_positions[:, None], float("-inf"))
+            causal = causal.unsqueeze(0).unsqueeze(0)
+            mask = causal if mask is None else mask + causal
 
         # 5. Scaled dot-product attention
         attn_out, _ = scaled_dot_product_attention(
