@@ -49,15 +49,20 @@ class TransformerBlock(nn.Module):
         self.ln1 = LayerNorm(config=cfg)
         self.attn = MultiHeadAttention(config=cfg)
         self.ln2 = LayerNorm(config=cfg)
-        self.mlp = FeedForward(config=cfg)
+        # Keep the original registered name so existing checkpoints load.
+        self.ffn = FeedForward(config=cfg)
 
         dropout_p = getattr(cfg, "dropout", 0.1)
         self.dropout = nn.Dropout(p=dropout_p)
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        # Accept the conventional MLP name while storing it under the
+        # checkpoint-compatible ``ffn`` module key.
+        super().__setattr__("ffn" if name == "mlp" else name, value)
+
     @property
-    def ffn(self) -> FeedForward:
-        """Compatibility alias for callers using the former sublayer name."""
-        return self.mlp
+    def mlp(self) -> FeedForward:
+        return self.ffn
 
     def forward(
         self,
