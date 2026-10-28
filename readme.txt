@@ -106,3 +106,7 @@ while targeting the remaining sampling, decoding, and integration edge cases:
 69. KVCache accepted invalid layer indexes and mismatched key/value shapes. It validates both.
 70. Sinusoidal position embeddings accepted invalid dimensions/offsets. Added bounds checks.
 71. LMHead could tie an embedding matrix with an incompatible shape. It now rejects mismatch.
+72. TokenEmbedding's custom initialization overwrote nn.Embedding's zero padding row. The
+   configured padding vector is now zeroed after initialization.
+73. ModelLoader's default `.pth` path disagreed with the project's configured `.pt` path.
+   The loader now uses DEFAULT_WEIGHTS_PATH.
