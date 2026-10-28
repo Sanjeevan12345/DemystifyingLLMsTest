@@ -1,5 +1,6 @@
 """Module implementation."""
 import torch
+import inspect
 from typing import Optional, List, Callable
 from .kv_cache import KVCache
 from .stop_criteria import StopCriteria
@@ -13,6 +14,7 @@ def autoregressive_generate(
     eos_token_id: Optional[int] = None,
     sampler_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     use_cache: bool = False,
+    attention_mask: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
     Generate tokens autoregressively.
@@ -28,13 +30,34 @@ def autoregressive_generate(
     finished = torch.zeros(batch_size, dtype=torch.bool, device=generated.device)
 
     kv_cache = KVCache(num_layers=getattr(model, "num_layers", 12)) if use_cache else None
+    if attention_mask is not None:
+        if attention_mask.shape != input_ids.shape:
+            raise ValueError("attention_mask must have the same shape as input_ids")
+        attention_mask = attention_mask.to(device=input_ids.device)
+
+    try:
+        forward_parameters = inspect.signature(model.forward).parameters
+    except (AttributeError, TypeError, ValueError):
+        forward_parameters = {}
 
     for _ in range(max_new_tokens):
         if kv_cache is not None:
             model_inputs = generated if kv_cache.get_seq_length(0) == 0 else generated[:, -1:]
-            logits = model(model_inputs, kv_cache=kv_cache)
+            kwargs = {"kv_cache": kv_cache}
+            if "position_ids" in forward_parameters:
+                start_pos = kv_cache.get_seq_length(0)
+                kwargs["position_ids"] = torch.full(
+                    (batch_size, model_inputs.size(1)), start_pos,
+                    dtype=torch.long, device=input_ids.device
+                )
+            if attention_mask is not None and "attention_mask" in forward_parameters:
+                kwargs["attention_mask"] = attention_mask
+            logits = model(model_inputs, **kwargs)
         else:
-            logits = model(generated)
+            kwargs = {}
+            if attention_mask is not None and "attention_mask" in forward_parameters:
+                kwargs["attention_mask"] = attention_mask
+            logits = model(generated, **kwargs)
 
         # Take logits for the last token position: (batch_size, vocab_size)
         if isinstance(logits, tuple):
@@ -53,6 +76,11 @@ def autoregressive_generate(
 
         # generated = torch.cat([generated, next_token], dim=-1) is correct
         generated = torch.cat([generated, next_token], dim=-1)
+        if attention_mask is not None:
+            attention_mask = torch.cat(
+                (attention_mask, torch.ones((batch_size, 1), dtype=attention_mask.dtype, device=attention_mask.device)),
+                dim=-1,
+            )
 
         if stop_criteria.should_stop(generated.size(1)) or (eos_token_id is not None and bool(finished.all())):
             break

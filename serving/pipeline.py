@@ -3,6 +3,7 @@ End-to-end serving pipeline connecting tokenization, model execution, and decodi
 """
 
 from typing import Optional, Any, Union, List
+import inspect
 import torch
 import torch.nn as nn
 
@@ -55,6 +56,7 @@ class ServingPipeline:
             tokens = [ord(c) for c in text]
 
         input_ids = torch.tensor([tokens], dtype=torch.long, device=self.device)
+        attention_mask = torch.ones_like(input_ids)
 
         # Step 2: Autoregressive model execution
         output_ids = input_ids
@@ -73,14 +75,22 @@ class ServingPipeline:
         if self.inference_config.seed is not None:
             torch.manual_seed(self.inference_config.seed)
         generated_tokens = []
+        try:
+            forward_parameters = inspect.signature(self.model.forward).parameters
+        except (AttributeError, TypeError, ValueError):
+            forward_parameters = {}
         if self.model is not None and callable(self.model):
             with torch.no_grad():
                 for _ in range(token_limit):
-                    output = self.model(output_ids)
+                    if "attention_mask" in forward_parameters:
+                        output = self.model(output_ids, attention_mask=attention_mask)
+                    else:
+                        output = self.model(output_ids)
                     if isinstance(output, tuple):
                         output = output[0]
                     next_id = sampler.sample(output[:, -1, :], output_ids[0]).view(1, 1)
                     output_ids = torch.cat((output_ids, next_id), dim=-1)
+                    attention_mask = torch.cat((attention_mask, torch.ones_like(next_id)), dim=-1)
                     generated_tokens.append(int(next_id.item()))
                     if next_id.item() in self.inference_config.stop_token_ids:
                         break
