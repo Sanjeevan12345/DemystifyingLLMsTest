@@ -10,6 +10,20 @@ import torch
 import torch.nn.functional as F
 
 
+def compute_perplexity(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    pad_token_id: int = -100,
+) -> float:
+    """Compute causal language-model perplexity, ignoring padded labels."""
+    if logits.shape[:-1] != labels.shape:
+        raise ValueError("logits and labels must have matching batch and sequence dimensions")
+    shift_logits = logits[..., :-1, :].contiguous().view(-1, logits.size(-1))
+    shift_labels = labels[..., 1:].contiguous().view(-1)
+    loss = torch.nn.CrossEntropyLoss(ignore_index=pad_token_id)(shift_logits, shift_labels)
+    return torch.exp(loss).item()
+
+
 def calculate_perplexity(loss: float) -> float:
     """
     Compute perplexity from average cross-entropy loss (natural log base).
@@ -18,7 +32,7 @@ def calculate_perplexity(loss: float) -> float:
         loss: Average cross-entropy loss per token.
 
     Returns:
-        Perplexity value (exp(loss)). Clamped to prevent float overflow.
+        Perplexity value (exp(loss)).
     """
     loss_tensor = loss if isinstance(loss, torch.Tensor) else torch.tensor(loss, dtype=torch.float64)
     return torch.exp(loss_tensor).item()
