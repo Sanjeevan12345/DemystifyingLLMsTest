@@ -45,11 +45,18 @@ def autoregressive_generate(
             model_inputs = generated if kv_cache.get_seq_length(0) == 0 else generated[:, -1:]
             kwargs = {"kv_cache": kv_cache}
             if "position_ids" in forward_parameters:
-                start_pos = kv_cache.get_seq_length(0)
-                kwargs["position_ids"] = torch.full(
-                    (batch_size, model_inputs.size(1)), start_pos,
-                    dtype=torch.long, device=input_ids.device
-                )
+                if attention_mask is not None:
+                    position_ids = attention_mask.long().cumsum(dim=-1) - 1
+                    position_ids = position_ids.clamp_min(0)[:, -model_inputs.size(1):]
+                else:
+                    start_pos = kv_cache.get_seq_length(0)
+                    position_ids = torch.arange(
+                        start_pos,
+                        start_pos + model_inputs.size(1),
+                        dtype=torch.long,
+                        device=input_ids.device,
+                    ).unsqueeze(0).expand(batch_size, -1)
+                kwargs["position_ids"] = position_ids
             if attention_mask is not None and "attention_mask" in forward_parameters:
                 kwargs["attention_mask"] = attention_mask
             logits = model(model_inputs, **kwargs)

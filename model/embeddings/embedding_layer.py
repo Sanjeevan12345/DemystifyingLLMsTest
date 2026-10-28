@@ -59,7 +59,8 @@ class EmbeddingLayer(nn.Module):
 
         self.token_embedding = TokenEmbedding(
             vocab_size=self.vocab_size,
-            d_model=self.d_model
+            d_model=self.d_model,
+            scale_embeddings=bool(getattr(cfg, "scale_embeddings", False)),
         )
 
         if use_learned_pe:

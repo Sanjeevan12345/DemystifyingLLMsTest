@@ -11,7 +11,6 @@ import torch.nn as nn
 from model.attention.multi_head import MultiHeadAttention
 from model.layers.feedforward import FeedForward
 from model.layers.layer_norm import LayerNorm
-from model.layers.residual import ResidualConnection
 
 
 def _resolve_config(explicit_config: Optional[Any] = None) -> Any:
@@ -50,11 +49,15 @@ class TransformerBlock(nn.Module):
         self.ln1 = LayerNorm(config=cfg)
         self.attn = MultiHeadAttention(config=cfg)
         self.ln2 = LayerNorm(config=cfg)
-        self.ffn = FeedForward(config=cfg)
+        self.mlp = FeedForward(config=cfg)
 
         dropout_p = getattr(cfg, "dropout", 0.1)
-        self.resid1 = ResidualConnection(dropout=dropout_p)
-        self.resid2 = ResidualConnection(dropout=dropout_p)
+        self.dropout = nn.Dropout(p=dropout_p)
+
+    @property
+    def ffn(self) -> FeedForward:
+        """Compatibility alias for callers using the former sublayer name."""
+        return self.mlp
 
     def forward(
         self,
@@ -73,8 +76,16 @@ class TransformerBlock(nn.Module):
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
         """
-        # h = self.resid1(x, self.attn(self.ln1(x), mask=mask, kv_cache=kv_cache, layer_idx=self.layer_idx))
-        # out = self.resid2(h, self.ffn(self.ln2(h)))
-        h = self.resid1(x, self.attn(self.ln1(x), mask=mask, kv_cache=kv_cache, layer_idx=self.layer_idx))
-        out = self.resid2(h, self.ffn(self.ln2(h)))
-        return out
+        norm_x1 = self.ln1(x)
+        if kv_cache is None:
+            attn_out = self.attn(norm_x1, mask=mask)
+        else:
+            attn_out = self.attn(
+                norm_x1, mask=mask, kv_cache=kv_cache, layer_idx=self.layer_idx
+            )
+        x = x + self.dropout(attn_out)
+
+        norm_x2 = self.ln2(x)
+        mlp_out = self.mlp(norm_x2)
+        x = x + self.dropout(mlp_out)
+        return x
