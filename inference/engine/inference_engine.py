@@ -31,11 +31,11 @@ class FullTransformerModel(nn.Module):
         if config.tie_weights:
             self.lm_head.tie_weights(self.embeddings.token_embedding.embedding.weight)
 
-    def forward(self, input_ids: torch.Tensor, **kwargs) -> torch.Tensor:
-        cache = kwargs.get("kv_cache")
+    def forward(self, input_ids: torch.Tensor, kv_cache: Optional[Any] = None) -> torch.Tensor:
+        cache = kv_cache
         offset = cache.get_seq_length(0) if cache is not None else 0
         h = self.embeddings(input_ids, offset=offset)
-        h = self.blocks(h, **kwargs)
+        h = self.blocks(h, kv_cache=cache)
         logits = self.lm_head(h)
         return logits
 
@@ -132,10 +132,7 @@ class InferenceEngine:
         if self.model is not None:
             try:
                 parameters = inspect.signature(self.model.forward).parameters
-                accepts_cache = "kv_cache" in parameters or any(
-                    parameter.kind == inspect.Parameter.VAR_KEYWORD
-                    for parameter in parameters.values()
-                )
+                accepts_cache = "kv_cache" in parameters
             except (AttributeError, TypeError, ValueError):
                 accepts_cache = False
         kv_cache = (

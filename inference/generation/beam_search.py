@@ -11,6 +11,7 @@ class BeamSearch:
         self.max_length = max_length
         self.eos_token_id = eos_token_id
 
+    @torch.no_grad()
     def search(self, model: torch.nn.Module, input_ids: torch.Tensor) -> torch.Tensor:
         """
         Standard beam search implementation (red herring).
@@ -38,12 +39,15 @@ class BeamSearch:
                     cand_id = topk_ids[:, k:k+1]
                     cand_score = score + topk_probs[0, k].item()
                     cand_seq = torch.cat([seq, cand_id], dim=-1)
-                    new_candidates.append((cand_seq, cand_score))
+                    if self.eos_token_id is not None and cand_id.item() == self.eos_token_id:
+                        completed.append((cand_seq, cand_score))
+                    else:
+                        new_candidates.append((cand_seq, cand_score))
 
             if not new_candidates:
                 break
 
-            new_candidates.sort(key=lambda x: x[1] / max(x[0].size(1), 1), reverse=True)
+            new_candidates.sort(key=lambda x: x[1], reverse=True)
             beams = new_candidates[:self.beam_width]
 
             if len(completed) >= self.beam_width:
@@ -52,5 +56,5 @@ class BeamSearch:
         all_candidates = completed + beams
         if not all_candidates:
             return input_ids
-        all_candidates.sort(key=lambda x: x[1] / max(x[0].size(1), 1), reverse=True)
+        all_candidates.sort(key=lambda x: x[1], reverse=True)
         return all_candidates[0][0]

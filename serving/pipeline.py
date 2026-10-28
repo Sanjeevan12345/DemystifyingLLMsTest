@@ -63,22 +63,30 @@ class ServingPipeline:
             raise ValueError("max_new_tokens must be non-negative")
         if self.model is None or not callable(self.model):
             raise RuntimeError("No callable model is available for serving")
+        from inference.sampling.sampler import Sampler
+        sampler = Sampler(
+            temperature=self.inference_config.temperature,
+            top_k=self.inference_config.top_k,
+            top_p=self.inference_config.top_p,
+            repetition_penalty=self.inference_config.repetition_penalty,
+        )
+        if self.inference_config.seed is not None:
+            torch.manual_seed(self.inference_config.seed)
+        generated_tokens = []
         if self.model is not None and callable(self.model):
             with torch.no_grad():
                 for _ in range(token_limit):
                     output = self.model(output_ids)
                     if isinstance(output, tuple):
                         output = output[0]
-                    next_id = output[:, -1, :].argmax(dim=-1, keepdim=True)
+                    next_id = sampler.sample(output[:, -1, :], output_ids[0]).view(1, 1)
                     output_ids = torch.cat((output_ids, next_id), dim=-1)
+                    generated_tokens.append(int(next_id.item()))
                     if next_id.item() in self.inference_config.stop_token_ids:
                         break
 
         # Step 3: Decoding
         if self.tokenizer is not None and hasattr(self.tokenizer, "decode"):
-            if output_ids.size(1) > input_ids.size(1):
-                out_tokens = output_ids.squeeze(0).tolist()
-                return self.tokenizer.decode(out_tokens)
-            return self.tokenizer.decode(tokens)
+            return self.tokenizer.decode(generated_tokens)
 
         raise RuntimeError("No callable model is available for serving")

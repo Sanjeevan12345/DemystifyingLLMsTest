@@ -29,9 +29,17 @@ class RequestHandler:
         Returns:
             Formatted response dictionary.
         """
+        if not isinstance(request_body, dict):
+            raise ValueError("request body must be a JSON object")
         prompt = request_body.get("prompt", "")
+        if not isinstance(prompt, str):
+            raise ValueError("prompt must be a string")
         max_tokens = request_body.get("max_tokens", 16)
         temperature = request_body.get("temperature", 0.8)
+        if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 0:
+            raise ValueError("max_tokens must be a non-negative integer")
+        if not isinstance(temperature, (int, float)) or temperature < 0:
+            raise ValueError("temperature must be a non-negative number")
 
         # Tokenize prompt
         if self.tokenizer is not None and hasattr(self.tokenizer, "encode"):
@@ -41,11 +49,15 @@ class RequestHandler:
 
         # Generate continuation
         if self.engine is not None and hasattr(self.engine, "generate_tokens"):
-            generated_tokens = self.engine.generate_tokens(
-                prompt_tokens=prompt_tokens,
-                max_new_tokens=max_tokens,
-                temperature=temperature
-            )
+            generation_args = {
+                "prompt_tokens": prompt_tokens,
+                "max_new_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            for name in ("top_k", "top_p"):
+                if name in request_body:
+                    generation_args[name] = request_body[name]
+            generated_tokens = self.engine.generate_tokens(**generation_args)
         elif self.engine is not None and hasattr(self.engine, "generate"):
             raw_gen = self.engine.generate(prompt, tokenizer=self.tokenizer, max_new_tokens=max_tokens)
             if isinstance(raw_gen, str) and raw_gen.startswith(prompt):
@@ -56,12 +68,16 @@ class RequestHandler:
             raise RuntimeError("No inference engine is available to handle completion")
 
         if not (self.engine is not None and hasattr(self.engine, "generate") and not hasattr(self.engine, "generate_tokens")):
-            completion_tokens = generated_tokens[len(prompt_tokens):]
+            has_prompt_prefix = (
+                len(generated_tokens) >= len(prompt_tokens)
+                and list(generated_tokens[:len(prompt_tokens)]) == list(prompt_tokens)
+            )
+            completion_tokens = generated_tokens[len(prompt_tokens):] if has_prompt_prefix else generated_tokens
             if self.tokenizer is not None and hasattr(self.tokenizer, "decode"):
                 response_text = self.tokenizer.decode(completion_tokens)
             else:
                 response_text = "".join(chr(token) for token in completion_tokens if 0 <= token <= 0x10FFFF)
-        completion_count = len(generated_tokens) - len(prompt_tokens)
+        completion_count = len(completion_tokens) if "completion_tokens" in locals() else 0
         if self.engine is not None and hasattr(self.engine, "generate") and not hasattr(self.engine, "generate_tokens"):
             if self.tokenizer is not None and hasattr(self.tokenizer, "encode"):
                 try:

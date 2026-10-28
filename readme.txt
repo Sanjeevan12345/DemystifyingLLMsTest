@@ -110,3 +110,25 @@ while targeting the remaining sampling, decoding, and integration edge cases:
    configured padding vector is now zeroed after initialization.
 73. ModelLoader's default `.pth` path disagreed with the project's configured `.pt` path.
    The loader now uses DEFAULT_WEIGHTS_PATH.
+74. LayerNorm treated a multi-axis normalized_shape as only its final dimension. It now
+   supports the full normalized shape using PyTorch's layer_norm operation.
+75. FullTransformerModel passed kv_cache through **kwargs, causing generic models that
+   accept **kwargs to be misdetected as cache-aware. Cache detection now requires an
+   explicit kv_cache parameter.
+76. ServingPipeline returned the prompt together with its generated continuation despite
+   documenting a completion return value. It now decodes only generated tokens.
+77. ServingPipeline ignored temperature, top-k, top-p, repetition penalty, and seed. It
+   now samples through the configured Sampler.
+78. API request handling assumed every generation method returned prompt-prefixed IDs.
+   It now supports either prompt-prefixed or continuation-only token lists.
+79. API requests passed unset top-k/top-p arguments to engines that do not accept them.
+   Those optional arguments are now forwarded only when present in the request.
+80. Completion routes did not normalize method case or map invalid request bodies into
+   client errors. Both cases are handled.
+81. CORS response headers ignored configured allowed origins. The server now applies its
+   ServerConfig origin list to normal and preflight responses.
+82. Beam search expanded EOS hypotheses again and ranked by average score across prompt
+   plus output length. It now completes EOS candidates immediately and compares cumulative
+   log-probability scores.
+83. Rotary mode added sinusoidal absolute embeddings as well as rotary positions. The
+   embedding layer now omits absolute positions when use_rotary is enabled.
