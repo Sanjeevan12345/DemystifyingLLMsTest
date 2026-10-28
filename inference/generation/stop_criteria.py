@@ -5,6 +5,8 @@ from typing import List, Optional
 
 class StopCriteria:
     def __init__(self, max_length: int, eos_token_id: Optional[int] = None):
+        if max_length < 0:
+            raise ValueError("max_length must be non-negative")
         self.max_length = max_length
         self.eos_token_id = eos_token_id
 

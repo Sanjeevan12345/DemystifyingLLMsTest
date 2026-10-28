@@ -93,7 +93,9 @@ class InferenceEngine:
         self._prepare_model()
 
         max_tokens = max_new_tokens if max_new_tokens is not None else self.inference_config.max_new_tokens
-        if max_tokens <= 0:
+        if max_tokens < 0:
+            raise ValueError("max_new_tokens must be non-negative")
+        if max_tokens == 0:
             return list(prompt_tokens)
 
         temp = temperature if temperature is not None else self.inference_config.temperature
@@ -104,6 +106,20 @@ class InferenceEngine:
         top_k = self.inference_config.top_k if top_k is None else top_k
         top_p = self.inference_config.top_p if top_p is None else top_p
         tokens = list(prompt_tokens)
+        if self.inference_config.beam_width > 1:
+            if self.model is None:
+                raise RuntimeError("No model is available for beam search")
+            from inference.generation.beam_search import BeamSearch
+            input_tensor = torch.tensor([tokens], dtype=torch.long, device=self.device)
+            beam_search = BeamSearch(
+                beam_width=self.inference_config.beam_width,
+                max_length=max_tokens,
+                eos_token_id=self.inference_config.stop_token_ids[0] if self.inference_config.stop_token_ids else None,
+            )
+            with torch.no_grad():
+                result = beam_search.search(self.model, input_tensor)
+            return result[0].tolist()
+
         from inference.sampling.sampler import Sampler
         from inference.generation.kv_cache import KVCache
         sampler = Sampler(
@@ -140,11 +156,8 @@ class InferenceEngine:
                     logits = logits[0]
                 next_token_logits = logits[:, -1, :]  # (1, vocab_size)
 
-                if temp == 0:
-                    next_token = torch.argmax(next_token_logits, dim=-1).item()
-                else:
-                    sampled = sampler.sample(next_token_logits, tokens)
-                    next_token = sampled.item()
+                sampled = sampler.sample(next_token_logits, tokens)
+                next_token = sampled.item()
 
                 tokens.append(int(next_token))
 

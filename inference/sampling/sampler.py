@@ -20,6 +20,8 @@ class Sampler:
         self.top_k = top_k
         self.top_p = top_p
         self.repetition_penalty = repetition_penalty
+        if temperature < 0 or top_k < 0 or not 0.0 <= top_p <= 1.0 or repetition_penalty <= 0:
+            raise ValueError("Invalid sampling configuration")
 
     def sample(
         self,
@@ -34,12 +36,15 @@ class Sampler:
             logits = logits.unsqueeze(0)
         if self.temperature < 0:
             raise ValueError("temperature must be non-negative")
-        if self.temperature == 0:
-            return torch.argmax(logits, dim=-1)
-
         # 1. Repetition penalty
         if self.repetition_penalty != 1.0 and generated_tokens is not None:
             logits = apply_repetition_penalty(logits, generated_tokens, penalty=self.repetition_penalty)
+
+        # Temperature changes the distribution used by nucleus filtering.
+        if self.temperature > 0 and self.temperature != 1.0:
+            logits = apply_temperature(logits, temperature=self.temperature)
+        if self.temperature == 0:
+            return torch.argmax(logits, dim=-1)
 
         # 2. Top-K
         if self.top_k > 0:
@@ -49,13 +54,7 @@ class Sampler:
         if self.top_p < 1.0:
             logits = apply_top_p(logits, p=self.top_p)
 
-        # 4. Temperature
-        if self.temperature != 1.0:
-            # Note: apply_temperature may return probs or scaled logits depending on bugs
-            scaled = apply_temperature(logits, temperature=self.temperature)
-            probs = F.softmax(scaled, dim=-1)
-        else:
-            probs = F.softmax(logits, dim=-1)
+        probs = F.softmax(logits, dim=-1)
 
         # 5. Multinomial sample
         next_token = torch.multinomial(probs, num_samples=1)

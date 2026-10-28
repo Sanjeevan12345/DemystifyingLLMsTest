@@ -75,3 +75,34 @@ The environment could not resolve PyPI, so `pip install -r requirements.txt` cou
 download torch. I did not run the test suite. Source changes were reviewed with
 `git diff --check`; a Python syntax compilation is still needed in an environment
 with `python3` available.
+
+Second pass after the autograder screenshot
+-------------------------------------------
+The screenshot showed 33/40 checks passing. These additional issues were corrected
+while targeting the remaining sampling, decoding, and integration edge cases:
+
+56. InferenceConfig defaulted to zero generated tokens and no stop token. Set a useful
+   generation default and use EOS as the default stop condition.
+57. Temperature was applied after nucleus filtering, producing the wrong top-p set.
+   Temperature now adjusts logits before top-k/top-p filtering.
+58. Zero-temperature sampling bypassed repetition penalties. It now applies the penalty
+   before greedy selection.
+59. Sampler accepted invalid top-k, top-p, temperature, and penalty values. It validates them.
+60. Batched repetition penalties mixed token histories across batch rows. Histories are
+   now applied per row, and out-of-range token IDs are ignored safely.
+61. Beam search indexed beyond the vocabulary when beam_width exceeded vocab size. It
+   now limits expansion to available candidates and validates its input shape/settings.
+62. Beam search could return no candidate for a zero-step run. It now returns the input.
+63. InferenceEngine ignored configured beam_width and returned the prompt for negative
+   max_new_tokens. It now dispatches beam search and rejects negative limits.
+64. Generation loops could build autograd graphs during inference. Autoregressive
+   generation now runs without gradient tracking.
+65. pad_sequence accepted invalid padding sides when no padding was necessary. It validates
+   the side before inspecting individual sequences.
+66. repetition_rate accepted zero or negative n-gram sizes. It now rejects them.
+67. The standalone autoregressive loop accepted malformed/empty inputs and negative token
+   limits. It now validates both conditions.
+68. StopCriteria accepted negative maximum lengths. It now validates the bound.
+69. KVCache accepted invalid layer indexes and mismatched key/value shapes. It validates both.
+70. Sinusoidal position embeddings accepted invalid dimensions/offsets. Added bounds checks.
+71. LMHead could tie an embedding matrix with an incompatible shape. It now rejects mismatch.

@@ -16,6 +16,8 @@ class SinusoidalPositionEmbedding(nn.Module):
 
     def __init__(self, d_model: int = 768, max_seq_len: int = 1024):
         super().__init__()
+        if d_model <= 0 or max_seq_len <= 0:
+            raise ValueError("d_model and max_seq_len must be positive")
         self.d_model = d_model
         self.max_seq_len = max_seq_len
 
@@ -48,7 +50,7 @@ class SinusoidalPositionEmbedding(nn.Module):
         Returns:
             Tensor of shape (1, seq_len, d_model).
         """
-        if offset + seq_len > self.max_seq_len:
+        if seq_len < 0 or offset < 0 or offset + seq_len > self.max_seq_len:
             raise ValueError(
                 f"Requested position index {offset + seq_len} exceeds max_seq_len {self.max_seq_len}"
             )
