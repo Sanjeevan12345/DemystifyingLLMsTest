@@ -34,6 +34,8 @@ class ServingPipeline:
             self.config = ModelConfig(d_model=768, vocab_size=50257)
         self.inference_config = inference_config or InferenceConfig()
         self.device = torch.device(device) if device else torch.device("cpu")
+        if isinstance(self.model, nn.Module):
+            self.model.to(self.device).eval()
 
     def process(self, text: str, max_new_tokens: Optional[int] = None) -> str:
         """
@@ -52,19 +54,31 @@ class ServingPipeline:
         else:
             tokens = [ord(c) for c in text]
 
-        input_ids = tokens
+        input_ids = torch.tensor([tokens], dtype=torch.long, device=self.device)
 
-        # Step 2: Model Forward Execution
+        # Step 2: Autoregressive model execution
+        output_ids = input_ids
+        token_limit = self.inference_config.max_new_tokens if max_new_tokens is None else max_new_tokens
+        if token_limit < 0:
+            raise ValueError("max_new_tokens must be non-negative")
+        if self.model is None or not callable(self.model):
+            raise RuntimeError("No callable model is available for serving")
         if self.model is not None and callable(self.model):
-            output = self.model(input_ids)
-        else:
-            output = None
+            with torch.no_grad():
+                for _ in range(token_limit):
+                    output = self.model(output_ids)
+                    if isinstance(output, tuple):
+                        output = output[0]
+                    next_id = output[:, -1, :].argmax(dim=-1, keepdim=True)
+                    output_ids = torch.cat((output_ids, next_id), dim=-1)
+                    if next_id.item() in self.inference_config.stop_token_ids:
+                        break
 
         # Step 3: Decoding
         if self.tokenizer is not None and hasattr(self.tokenizer, "decode"):
-            if isinstance(output, torch.Tensor):
-                out_tokens = output.argmax(dim=-1).squeeze(0).tolist()
+            if output_ids.size(1) > input_ids.size(1):
+                out_tokens = output_ids.squeeze(0).tolist()
                 return self.tokenizer.decode(out_tokens)
             return self.tokenizer.decode(tokens)
 
-        return f"{text} [processed]"
+        raise RuntimeError("No callable model is available for serving")

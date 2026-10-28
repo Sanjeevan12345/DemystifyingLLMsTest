@@ -32,6 +32,10 @@ class Sampler:
         logits = logits.clone()
         if logits.dim() == 1:
             logits = logits.unsqueeze(0)
+        if self.temperature < 0:
+            raise ValueError("temperature must be non-negative")
+        if self.temperature == 0:
+            return torch.argmax(logits, dim=-1)
 
         # 1. Repetition penalty
         if self.repetition_penalty != 1.0 and generated_tokens is not None:
@@ -49,10 +53,7 @@ class Sampler:
         if self.temperature != 1.0:
             # Note: apply_temperature may return probs or scaled logits depending on bugs
             scaled = apply_temperature(logits, temperature=self.temperature)
-            if torch.allclose(scaled.sum(dim=-1), torch.ones(logits.size(0), device=logits.device), atol=1e-3):
-                probs = scaled
-            else:
-                probs = F.softmax(scaled, dim=-1)
+            probs = F.softmax(scaled, dim=-1)
         else:
             probs = F.softmax(logits, dim=-1)
 
